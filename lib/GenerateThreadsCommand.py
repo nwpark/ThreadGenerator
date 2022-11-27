@@ -1,10 +1,9 @@
-import adsk.cam
-import adsk.core
-import adsk.fusion
+from adsk.core import CommandCreatedEventArgs, NamedValues, CommandCreatedEventHandler
 
 from .OnDestroyHandler import OnDestroyHandler
 from .OnExecuteHandler import OnExecuteHandler
-from .common import ui, userParameters, printTrace
+from .UserParameters import UserParameters
+from .common.Common import ui, printTrace, resourceFolder
 
 
 class GenerateThreadsCommand:
@@ -13,22 +12,21 @@ class GenerateThreadsCommand:
         self.commandDefinition = ui.commandDefinitions.itemById('ThreadGenerator')
         if not self.commandDefinition:
             self.commandDefinition = ui.commandDefinitions.addButtonDefinition('ThreadGenerator', 'Generate Thread',
-                                                                               'Generates threads.', './resources')
-
+                                                                               'Generates threads.', resourceFolder)
         self.commandDefinition.commandCreated.add(self.commandCreatedHandler)
 
     def execute(self):
-        inputs = adsk.core.NamedValues.create()
+        inputs = NamedValues.create()
         self.commandDefinition.execute(inputs)
 
-    class _CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    class _CommandCreatedHandler(CommandCreatedEventHandler):
         def __init__(self):
             super().__init__()
             self.onExecuteHandler = None
             self.onExecutePreviewHandler = None
             self.onDestroyHandler = None
 
-        def notify(self, args):
+        def notify(self, args: CommandCreatedEventArgs):
             try:
                 cmd = args.command
                 cmd.isRepeatable = False
@@ -40,8 +38,7 @@ class GenerateThreadsCommand:
                 cmd.executePreview.add(self.onExecutePreviewHandler)
                 cmd.destroy.add(self.onDestroyHandler)
 
-                for userParameter in userParameters:
-                    cmd.commandInputs.addValueInput(userParameter.id, userParameter.name, userParameter.unitType,
-                                                    userParameter.asValueInput())
+                for userParameter in UserParameters.asList():
+                    userParameter.addToCommandInputs(cmd.commandInputs)
             except:
                 printTrace()

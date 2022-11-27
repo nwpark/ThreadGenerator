@@ -1,20 +1,22 @@
-from adsk.core import Point3D
-from adsk.fusion import FeatureOperations, ExtentDirections, SketchPoint, Component, Sketch
+from adsk.core import Point3D, CommandEventArgs, CommandEventHandler
+from adsk.fusion import FeatureOperations, SketchPoint, Component
 
-from .common import *
-from .sketch import createNewComponent, drawCircle, extrudeProfile, ThreadFeature, createSketchByPlane, createXYSketch, createCylinder
+from .UserParameters import UserParameters
+from .common.Common import printTrace, ui
+from .sketch.SketchUtils import createNewComponent, extrudeProfile, createXYSketch, createCylinder
+from .sketch.ThreadFeature import ThreadFeature
 
 
-class OnExecuteHandler(adsk.core.CommandEventHandler):
+class OnExecuteHandler(CommandEventHandler):
     def __init__(self):
         super().__init__()
         self._boltThickness = 0.25
 
-    def notify(self, args):
+    def notify(self, args: CommandEventArgs):
         try:
-            # update user parameters to match the current input values
-            for commandInput in args.firingEvent.sender.commandInputs:
-                getUserParameter(commandInput.id).setValueFromCommandInput(commandInput)
+            # TODO: different behavior if preview
+            # ui.messageBox(args.firingEvent.name)
+            UserParameters.updateValuesFromCommandInputs(args.firingEvent.sender.commandInputs)
             self.run()
             args.isValidResult = True
         except:
@@ -35,16 +37,16 @@ class OnExecuteHandler(adsk.core.CommandEventHandler):
     def _buildMultipleThreadsWithTolerances(self, component: Component):
         self._createBaseCuboid(component)
         for sketchPoint in self._createSketchPoints(component):
-            if not bool(isMale.getValueInUserUnits()):
+            if not UserParameters.isThreadMale():
                 self._createCylinder(component, sketchPoint.geometry)
             self._buildThread(component, sketchPoint)
 
     def _createBaseCuboid(self, component: Component):
-        boxWidth = majorDiameter.getValueInInternalUnits()
-        boxLength = (majorDiameter.getValueInInternalUnits() * generationCount.getValueInUserUnits() * 2) - majorDiameter.getValueInInternalUnits()
+        boxWidth = UserParameters.getMajorDiameter()
+        boxLength = (UserParameters.getMajorDiameter() * UserParameters.getGenerationCount() * 2) - UserParameters.getMajorDiameter()
         boxDepth = 0.1
         offset = boxWidth / 2
-        if not bool(isMale.getValueInUserUnits()):
+        if not UserParameters.isThreadMale():
             boxWidth = boxWidth + (self._boltThickness * 2)
             boxLength = boxLength + (self._boltThickness * 2)
             offset = offset + self._boltThickness
@@ -57,28 +59,30 @@ class OnExecuteHandler(adsk.core.CommandEventHandler):
     def _createSketchPoints(self, component: Component):
         sketch = createXYSketch(component)
         sketchPoints = []
-        for i in range(int(generationCount.getValueInUserUnits())):
-            x = majorDiameter.getValueInInternalUnits() * i * 2
+        for i in range(int(UserParameters.getGenerationCount())):
+            x = UserParameters.getMajorDiameter() * i * 2
             sketchPoint = sketch.sketchPoints.add(Point3D.create(x, 0, 0))
             sketchPoints.append(sketchPoint)
         return sketchPoints
 
     def _createCylinder(self, component: Component, center: Point3D):
-        diameter = majorDiameter.getValueInInternalUnits() + (self._boltThickness * 2)
-        createCylinder(component, center, diameter, length.getValueInInternalUnits())
+        diameter = UserParameters.getMajorDiameter() + (self._boltThickness * 2)
+        createCylinder(component, center, diameter, UserParameters.getLength())
 
     def _buildThread(self, component: Component, sketchPoint: SketchPoint):
         origin = sketchPoint.geometry
         plane = sketchPoint.parentSketch.referencePlane
-        isMaleThread = bool(isMale.getValueInUserUnits())
-        correctedLength = length.getValueInInternalUnits() + (0.1 if not isMaleThread else 0)
+        compensationLength = 0.1 if not UserParameters.isThreadMale() else 0
         threadFeature = ThreadFeature(component,
                                       origin,
                                       plane,
-                                      correctedLength,
-                                      majorDiameter.getValueInInternalUnits(),
-                                      minorDiameter.getValueInInternalUnits(),
-                                      pitch.getValueInInternalUnits(),
-                                      cutAngle.getValueInInternalUnits(),
-                                      notchWidth.getValueInInternalUnits())
-        threadFeature.create(isMaleThread)
+                                      UserParameters.getLength() + compensationLength,
+                                      UserParameters.getMajorDiameter(),
+                                      UserParameters.getMinorDiameter(),
+                                      UserParameters.getPitch(),
+                                      UserParameters.getCutAngle(),
+                                      UserParameters.getNotchWidth())
+        if UserParameters.isThreadMale():
+            threadFeature.createMaleThread()
+        else:
+            threadFeature.createFemaleThread()

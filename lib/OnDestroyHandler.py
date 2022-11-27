@@ -1,8 +1,10 @@
 import adsk.core
-from .common import printTrace
+from adsk.core import CommandEventHandler
+
+from .common.Common import printTrace
 
 
-class OnDestroyHandler(adsk.core.CommandEventHandler):
+class OnDestroyHandler(CommandEventHandler):
     def __init__(self):
         super().__init__()
 

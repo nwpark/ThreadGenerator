@@ -1,57 +1,9 @@
 import math
 
-import adsk.core
 from adsk.core import Point3D, ValueInput, ObjectCollection
-from adsk.fusion import Sketch, Component, Profile, ExtentDirections, FeatureOperations, BRepFace, ExtrudeFeature, \
-    SketchFittedSpline, ConstructionPlane, SketchPoint
+from adsk.fusion import Component, FeatureOperations, SketchFittedSpline, ConstructionPlane, Profile
 
-from .common import design
-
-
-def createNewComponent() -> Component:
-    allOccurrences = design.rootComponent.occurrences
-    newOccurrence = allOccurrences.addNewComponent(adsk.core.Matrix3D.create())
-    if newOccurrence.component is None:
-        raise ('New component failed to create', 'New Component Failed')
-    return newOccurrence.component
-
-
-def createXYSketch(component: Component) -> Sketch:
-    return component.sketches.add(component.xYConstructionPlane)
-
-
-def createXZSketch(component: Component) -> Sketch:
-    return component.sketches.add(component.xZConstructionPlane)
-
-
-def createCylinder(component: Component, center: Point3D, diameter: float, height: float):
-    sketch = createXYSketch(component)
-    profile = drawCircle(sketch, center, diameter)
-    extrudeProfile(component, profile, height)
-
-
-def drawCircle(sketch: Sketch, center: Point3D, diameter: float) -> Profile:
-    sketch.sketchCurves.sketchCircles.addByCenterRadius(center, diameter / 2)
-    return sketch.profiles.item(0)
-
-
-def createSketchByPlane(component: Component, plane) -> Sketch:
-    planeInput = component.constructionPlanes.createInput()
-    planeInput.setByOffset(plane, ValueInput.createByReal(0))
-    plane = component.constructionPlanes.add(planeInput)
-    return component.sketches.add(plane)
-
-
-def createRelativePoint(relativeTo: Point3D, x: float, y: float, z: float) -> Point3D:
-    return Point3D.create(relativeTo.x + x, relativeTo.y + y, relativeTo.z + z)
-
-
-def extrudeProfile(component: Component, profile: Profile, extentDistance: float,
-                   operation=FeatureOperations.NewBodyFeatureOperation) -> ExtrudeFeature:
-    extrudes = component.features.extrudeFeatures
-    extrudeInput = extrudes.createInput(profile, operation)
-    extrudeInput.setDistanceExtent(False, ValueInput.createByReal(extentDistance))
-    return extrudes.add(extrudeInput)
+from .SketchUtils import createSketchByPlane, drawCircle, extrudeProfile, createRelativePoint
 
 
 class ThreadFeature:
@@ -77,13 +29,7 @@ class ThreadFeature:
         self._cutDepth = (self._majorDiameter - self._minorDiameter) / 2
         self._protrusionWidth = self._notchWidth + (self._cutDepth * math.tan(self._cutAngle) * 2)
 
-    def create(self, isMale: bool):
-        if isMale:
-            self._createMale()
-        else:
-            self._createFemale()
-
-    def _createMale(self):
+    def createMaleThread(self):
         self._createShaft()
         spline = self._createHelixSpline()
         notchProfiles = self._createNotchProfilesAlongSpline(spline)
@@ -91,7 +37,7 @@ class ThreadFeature:
         self._createChamfer()
 
     # TODO: female chamfer
-    def _createFemale(self):
+    def createFemaleThread(self):
         self._createHole()
         spline = self._createHelixSpline()
         notchProfiles = self._createNotchProfilesAlongSpline(spline)
@@ -182,7 +128,7 @@ class _HelixCurve:
         self._c = math.tan(angle) * self._radius
         self._origin = origin
 
-    def getPoint(self, t) -> Point3D:
+    def _getPoint(self, t) -> Point3D:
         x = self._radius * math.cos(t)
         y = self._radius * math.sin(t)
         z = self._c * t
@@ -196,5 +142,5 @@ class _HelixCurve:
 
         for i in range(0, steps):
             t = tRange * step * i
-            pointsCollection.add(self.getPoint(t))
+            pointsCollection.add(self._getPoint(t))
         return pointsCollection
