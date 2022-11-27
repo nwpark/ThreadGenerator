@@ -1,3 +1,5 @@
+import math
+
 from adsk.core import Point3D, CommandEventArgs, CommandEventHandler
 from adsk.fusion import FeatureOperations, SketchPoint, Component
 
@@ -36,10 +38,10 @@ class OnExecuteHandler(CommandEventHandler):
 
     def _buildMultipleThreadsWithTolerances(self, component: Component):
         self._createBaseCuboid(component)
-        for sketchPoint in self._createSketchPoints(component):
+        for i, sketchPoint in enumerate(self._createSketchPoints(component)):
             if not UserParameters.isThreadMale():
                 self._createCylinder(component, sketchPoint.geometry)
-            self._buildThread(component, sketchPoint)
+            self._buildThread(component, sketchPoint, i)
 
     def _createBaseCuboid(self, component: Component):
         boxWidth = UserParameters.getMajorDiameter()
@@ -67,22 +69,31 @@ class OnExecuteHandler(CommandEventHandler):
 
     def _createCylinder(self, component: Component, center: Point3D):
         diameter = UserParameters.getMajorDiameter() + (self._boltThickness * 2)
-        createCylinder(component, center, diameter, UserParameters.getLength())
+        # TODO: replace compensation offset by chamfer
+        length = UserParameters.getLength() - 0.1
+        createCylinder(component, center, diameter, length)
 
-    def _buildThread(self, component: Component, sketchPoint: SketchPoint):
+    def _buildThread(self, component: Component, sketchPoint: SketchPoint, generationCount: int = 0):
         origin = sketchPoint.geometry
         plane = sketchPoint.parentSketch.referencePlane
-        compensationLength = 0.1 if not UserParameters.isThreadMale() else 0
+        notchWidthTolerance = self._getToleranceValue(UserParameters.getNotchWidthStep(), generationCount, 1, 3)
+        majorDiameterTolerance = self._getToleranceValue(UserParameters.getMajorDiameterStep(), generationCount, 2, 3)
+        minorDiameterTolerance = self._getToleranceValue(UserParameters.getMinorDiameterStep(), generationCount, 3, 3)
         threadFeature = ThreadFeature(component,
                                       origin,
                                       plane,
-                                      UserParameters.getLength() + compensationLength,
-                                      UserParameters.getMajorDiameter(),
-                                      UserParameters.getMinorDiameter(),
+                                      UserParameters.getLength(),
+                                      UserParameters.getMajorDiameter() + majorDiameterTolerance,
+                                      UserParameters.getMinorDiameter() + minorDiameterTolerance,
                                       UserParameters.getPitch(),
                                       UserParameters.getCutAngle(),
-                                      UserParameters.getNotchWidth())
+                                      UserParameters.getNotchWidth() + notchWidthTolerance)
         if UserParameters.isThreadMale():
             threadFeature.createMaleThread()
         else:
             threadFeature.createFemaleThread()
+
+    def _getToleranceValue(self, stepSize: float, stepCount: int, fromStep: int, interval: int) -> float:
+        # increment tolerance value every `interval` steps
+        intervalCount = math.floor((stepCount - fromStep) / interval) + 1
+        return max(0, intervalCount) * stepSize

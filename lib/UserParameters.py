@@ -86,6 +86,9 @@ class UserParameters:
     _notchWidth = UserDimensionParameter('notchWidthId', 'Notch Width', 'mm', 0.5)
     _isMale = UserBoolParameter('isMaleId', 'Male', True)
     _generationCount = _UserIntegerSliderParameter('generationCountId', 'Generation Count', 1, 10)
+    _majorDiameterStep = UserDimensionParameter('majorDiameterStepId', 'Major Diameter Step', 'mm', 0)
+    _minorDiameterStep = UserDimensionParameter('minorDiameterStepId', 'Minor Diameter Step', 'mm', 0)
+    _notchWidthStep = UserDimensionParameter('notchWidthStepId', 'Notch Width Step', 'mm', 0)
 
     @staticmethod
     def getLength() -> float:
@@ -120,6 +123,18 @@ class UserParameters:
         return UserParameters._generationCount.getValue()
 
     @staticmethod
+    def getMajorDiameterStep() -> float:
+        return UserParameters._majorDiameterStep.getValue()
+
+    @staticmethod
+    def getMinorDiameterStep() -> float:
+        return UserParameters._minorDiameterStep.getValue()
+
+    @staticmethod
+    def getNotchWidthStep() -> float:
+        return UserParameters._notchWidthStep.getValue()
+
+    @staticmethod
     def asList():
         return [UserParameters._length,
                 UserParameters._majorDiameter,
@@ -128,7 +143,10 @@ class UserParameters:
                 UserParameters._cutAngle,
                 UserParameters._notchWidth,
                 UserParameters._isMale,
-                UserParameters._generationCount]
+                UserParameters._generationCount,
+                UserParameters._majorDiameterStep,
+                UserParameters._minorDiameterStep,
+                UserParameters._notchWidthStep]
 
     @staticmethod
     def updateValuesFromCommandInputs(commandInputs: CommandInputs):
