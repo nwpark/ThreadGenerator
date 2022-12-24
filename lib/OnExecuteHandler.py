@@ -4,7 +4,7 @@ from adsk.core import Point3D, CommandEventArgs, CommandEventHandler
 from adsk.fusion import FeatureOperations, SketchPoint, Component
 
 from .UserParameters import UserParameters
-from .common.Common import printTrace, ui
+from .common.Common import printTrace, ui, design
 from .sketch.SketchUtils import createNewComponent, extrudeProfile, createXYSketch, createCylinder
 from .sketch.ThreadFeature import ThreadFeature
 
@@ -16,8 +16,8 @@ class OnExecuteHandler(CommandEventHandler):
 
     def notify(self, args: CommandEventArgs):
         try:
-            # TODO: different behavior if preview
-            # ui.messageBox(args.firingEvent.name)
+            # TODO: different behavior if preview (set `args.isValidResult = False` when rendering preview)
+            ui.messageBox(args.firingEvent.name)
             UserParameters.updateValuesFromCommandInputs(args.firingEvent.sender.commandInputs)
             self.run()
             args.isValidResult = True
@@ -25,6 +25,7 @@ class OnExecuteHandler(CommandEventHandler):
             printTrace()
 
     def run(self):
+        initTimelineIndex = design.timeline.markerPosition
         component = createNewComponent()
         # TODO: raise error if selection is not exactly 1 point coincident with a face
         if ui.activeSelections.count > 0:
@@ -32,6 +33,10 @@ class OnExecuteHandler(CommandEventHandler):
             self._buildSingleThread(component, selectedSketchPoint)
         else:
             self._buildMultipleThreadsWithTolerances(component)
+
+        timelineGroups = design.timeline.timelineGroups
+        timelineGroup = timelineGroups.add(initTimelineIndex, design.timeline.markerPosition - 1)
+        timelineGroup.name = 'Thread'
 
     def _buildSingleThread(self, component: Component, sketchPoint: SketchPoint):
         self._buildThread(component, sketchPoint)
