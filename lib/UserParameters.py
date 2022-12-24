@@ -1,7 +1,10 @@
-from adsk.core import ValueInput, CommandInputs, BoolValueCommandInput, IntegerSliderCommandInput, ValueCommandInput, \
-    CommandInput
+from enum import Enum
 
-from .common.Common import unitsMgr, resourceFolder
+from adsk.core import ValueInput, CommandInputs, BoolValueCommandInput, IntegerSliderCommandInput, ValueCommandInput, \
+    CommandInput, DropDownStyles, DropDownCommandInput
+
+from .ThreadDefinitions import ThreadDefinition
+from .common.Common import unitsMgr, resourceFolder, ui
 
 
 class _UserParameter:
@@ -13,37 +16,45 @@ class _UserParameter:
     def getValue(self):
         pass
 
+    def setValue(self, value):
+        pass
+
     def setValueFromCommandInput(self, commandInput: CommandInput):
         pass
 
     def addToCommandInputs(self, commandInputs: CommandInputs):
         pass
 
-    def hasId(self, id: str):
-        return id == self._id
+    def getId(self) -> str:
+        return self._id
 
 
-class UserDimensionParameter(_UserParameter):
+class _UserDimensionParameter(_UserParameter):
     def __init__(self, id, name: str, unitType: str, initValue: float):
         super().__init__(id, name)
         self._unitType = unitType
-        self._value = initValue
+        self._valueInSelfUnits = initValue
+        self._commandInput = ValueCommandInput.cast(None)
 
     def getValue(self) -> float:
         # dimensions must be used with internal units
-        return unitsMgr.convert(self._value, self._unitType, unitsMgr.internalUnits)
+        return unitsMgr.convert(self._valueInSelfUnits, self._unitType, unitsMgr.internalUnits)
+
+    def setValue(self, value):
+        self._valueInSelfUnits = value
+        self._commandInput.value = unitsMgr.convert(value, self._unitType, unitsMgr.internalUnits)
 
     def setValueFromCommandInput(self, commandInput: ValueCommandInput):
         # evaluateExpression returns value in internal units
         valueInInternalUnits = unitsMgr.evaluateExpression(commandInput.expression, self._unitType)
-        self._value = unitsMgr.convert(valueInInternalUnits, unitsMgr.internalUnits, self._unitType)
+        self._valueInSelfUnits = unitsMgr.convert(valueInInternalUnits, unitsMgr.internalUnits, self._unitType)
 
     def addToCommandInputs(self, commandInputs: CommandInputs):
-        commandInputs.addValueInput(self._id, self._name, self._unitType,
+        self._commandInput = commandInputs.addValueInput(self._id, self._name, self._unitType,
                                     ValueInput.createByReal(self.getValue()))
 
 
-class UserBoolParameter(_UserParameter):
+class _UserBoolParameter(_UserParameter):
     def __init__(self, id: str, name: str, initValue: bool):
         super().__init__(id, name)
         self._value = initValue
@@ -75,82 +86,106 @@ class _UserIntegerSliderParameter(_UserParameter):
         commandInputs.addIntegerSliderCommandInput(self._id, self._name, self._min, self._max, False)
 
 
-class UserParameters:
-    # TODO: chamfer input
-    # TODO: direction input
-    _length = UserDimensionParameter('lengthId', 'Length', 'mm', 20)
-    _majorDiameter = UserDimensionParameter('majorDiameterId', 'Major Diameter', 'mm', 11)
-    _minorDiameter = UserDimensionParameter('minorDiameterId', 'Minor Diameter', 'mm', 10)
-    _pitch = UserDimensionParameter('pitchId', 'Pitch', 'mm', 2)
-    _cutAngle = UserDimensionParameter('cutAngleId', 'Cut Angle', 'deg', 30.0)
-    _notchWidth = UserDimensionParameter('notchWidthId', 'Notch Width', 'mm', 0.5)
-    _isMale = UserBoolParameter('isMaleId', 'Male', True)
-    _generationCount = _UserIntegerSliderParameter('generationCountId', 'Generation Count', 1, 10)
-    _majorDiameterStep = UserDimensionParameter('majorDiameterStepId', 'Major Diameter Step', 'mm', 0)
-    _minorDiameterStep = UserDimensionParameter('minorDiameterStepId', 'Minor Diameter Step', 'mm', 0)
-    _notchWidthStep = UserDimensionParameter('notchWidthStepId', 'Notch Width Step', 'mm', 0)
+class UserDropDownParameter(_UserParameter):
+    def __init__(self, id: str, name: str, dropDownOptions: [str], defaultOption: str):
+        super().__init__(id, name)
+        self._dropDownInput: DropDownCommandInput = DropDownCommandInput.cast(None)
+        self._dropDownOptions = dropDownOptions
+        self._defaultOption = defaultOption
+
+    def getValue(self) -> str:
+        return self._dropDownInput.selectedItem.name
+
+    def setValueFromCommandInput(self, commandInput: IntegerSliderCommandInput):
+        pass
+
+    def addToCommandInputs(self, commandInputs: CommandInputs):
+        self._dropDownInput = commandInputs.addDropDownCommandInput(self._id, self._name,
+                                                                    DropDownStyles.TextListDropDownStyle)
+        for option in self._dropDownOptions:
+            self._dropDownInput.listItems.add(option, option == self._defaultOption)
+
+
+class UserParameters(Enum):
+    THREAD_DEFINITION_DROPDOWN = UserDropDownParameter('threadDefinitionDropdownId', 'Thread Definition', ThreadDefinition.getThreadNames(), ThreadDefinition.getThreadNames()[0])
+    LENGTH = _UserDimensionParameter('lengthId', 'Length', 'mm', 20)
+    MAJOR_DIAMETER = _UserDimensionParameter('majorDiameterId', 'Major Diameter', 'mm', 11)
+    MINOR_DIAMETER = _UserDimensionParameter('minorDiameterId', 'Minor Diameter', 'mm', 10)
+    PITCH = _UserDimensionParameter('pitchId', 'Pitch', 'mm', 2)
+    CUT_ANGLE = _UserDimensionParameter('cutAngleId', 'Cut Angle', 'deg', 30.0)
+    NOTCH_WIDTH = _UserDimensionParameter('notchWidthId', 'Notch Width', 'mm', 0.5)
+    IS_MALE = _UserBoolParameter('isMaleId', 'Male', True)
+    GENERATION_COUNT = _UserIntegerSliderParameter('generationCountId', 'Generation Count', 1, 10)
+    MAJOR_DIAMETER_STEP = _UserDimensionParameter('majorDiameterStepId', 'Major Diameter Step', 'mm', 0)
+    MINOR_DIAMETER_STEP = _UserDimensionParameter('minorDiameterStepId', 'Minor Diameter Step', 'mm', 0)
+    NOTCH_WIDTH_STEP = _UserDimensionParameter('notchWidthStepId', 'Notch Width Step', 'mm', 0)
+
+    @staticmethod
+    def applySelectedThreadDefinition():
+        threadName = UserParameters.THREAD_DEFINITION_DROPDOWN.value.getValue()
+        threadDefinition = ThreadDefinition.fromThreadName(threadName)
+        UserParameters.LENGTH.value.setValue(threadDefinition.length)
+        UserParameters.MAJOR_DIAMETER.value.setValue(threadDefinition.majorDiameter)
+        UserParameters.MINOR_DIAMETER.value.setValue(threadDefinition.minorDiameter)
+        UserParameters.PITCH.value.setValue(threadDefinition.pitch)
+        UserParameters.CUT_ANGLE.value.setValue(threadDefinition.cutAngle)
+        UserParameters.NOTCH_WIDTH.value.setValue(threadDefinition.notchWidth)
 
     @staticmethod
     def getLength() -> float:
-        return UserParameters._length.getValue()
+        return UserParameters.LENGTH.value.getValue()
 
     @staticmethod
     def getMajorDiameter() -> float:
-        return UserParameters._majorDiameter.getValue()
+        return UserParameters.MAJOR_DIAMETER.value.getValue()
 
     @staticmethod
     def getMinorDiameter() -> float:
-        return UserParameters._minorDiameter.getValue()
+        return UserParameters.MINOR_DIAMETER.value.getValue()
 
     @staticmethod
     def getPitch() -> float:
-        return UserParameters._pitch.getValue()
+        return UserParameters.PITCH.value.getValue()
 
     @staticmethod
     def getCutAngle() -> float:
-        return UserParameters._cutAngle.getValue()
+        return UserParameters.CUT_ANGLE.value.getValue()
 
     @staticmethod
     def getNotchWidth() -> float:
-        return UserParameters._notchWidth.getValue()
+        return UserParameters.NOTCH_WIDTH.value.getValue()
 
     @staticmethod
     def isThreadMale() -> bool:
-        return UserParameters._isMale.getValue()
+        return UserParameters.IS_MALE.value.getValue()
 
     @staticmethod
     def getGenerationCount() -> int:
-        return UserParameters._generationCount.getValue()
+        return UserParameters.GENERATION_COUNT.value.getValue()
 
     @staticmethod
     def getMajorDiameterStep() -> float:
-        return UserParameters._majorDiameterStep.getValue()
+        return UserParameters.MAJOR_DIAMETER_STEP.value.getValue()
 
     @staticmethod
     def getMinorDiameterStep() -> float:
-        return UserParameters._minorDiameterStep.getValue()
+        return UserParameters.MINOR_DIAMETER_STEP.value.getValue()
 
     @staticmethod
     def getNotchWidthStep() -> float:
-        return UserParameters._notchWidthStep.getValue()
+        return UserParameters.NOTCH_WIDTH_STEP.value.getValue()
 
     @staticmethod
-    def asList():
-        return [UserParameters._length,
-                UserParameters._majorDiameter,
-                UserParameters._minorDiameter,
-                UserParameters._pitch,
-                UserParameters._cutAngle,
-                UserParameters._notchWidth,
-                UserParameters._isMale,
-                UserParameters._generationCount,
-                UserParameters._majorDiameterStep,
-                UserParameters._minorDiameterStep,
-                UserParameters._notchWidthStep]
+    def getAllParameters() -> [_UserParameter]:
+        return list(map(lambda param: param.value, UserParameters))
+
+    @staticmethod
+    def fromId(id: str) -> _UserParameter:
+        return next(param for param in UserParameters.getAllParameters() if param.getId() == id)
 
     @staticmethod
     def updateValuesFromCommandInputs(commandInputs: CommandInputs):
         for i in range(commandInputs.count):
             commandInput = commandInputs.item(i)
-            userParameter = next(param for param in UserParameters.asList() if param.hasId(commandInput.id))
+            userParameter = UserParameters.fromId(commandInput.id)
             userParameter.setValueFromCommandInput(commandInput)
